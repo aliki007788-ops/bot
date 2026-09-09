@@ -5,7 +5,7 @@ from datetime import datetime
 import os
 
 # SQLite برای شروع - بعداً PostgreSQL
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./eitaa_ai.db")
+   DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./eitaa_ai_v2.db")
 
 engine = create_engine(
     DATABASE_URL,
