@@ -43,9 +43,9 @@ async def chat_stream(request: ChatRequest):
             yield f"data: {json.dumps({'content':'','done':True})}\n\n"
 
         except Exception as e:
-            print(f"Groq Error: {e}")
+            print(f"❌ Groq Error: {e}")
             err = json.dumps({
-                "content": "مشکلی پیش اومد!",
+                "content": "مشکلی پیش اومد. دوباره تلاش کن!",
                 "done": True
             }, ensure_ascii=False)
             yield f"data: {err}\n\n"
@@ -54,7 +54,7 @@ async def chat_stream(request: ChatRequest):
         generate(),
         media_type="text/event-stream",
         headers={
-            "Cache-Control": "no-cache",
+            "Cache-Control":     "no-cache",
             "X-Accel-Buffering": "no"
         }
     )
@@ -78,7 +78,7 @@ async def chat(request: ChatRequest):
         }
 
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"❌ Error: {e}")
         return {
             "success": False,
             "response": "مشکلی پیش اومد!"
@@ -86,7 +86,7 @@ async def chat(request: ChatRequest):
 
 def build_messages(request: ChatRequest) -> list:
     messages = [{
-        "role": "system",
+        "role":    "system",
         "content": SYSTEM_PROMPTS.get(
             request.category,
             SYSTEM_PROMPTS["general"]
@@ -96,12 +96,12 @@ def build_messages(request: ChatRequest) -> list:
     for msg in request.history[-MAX_HISTORY:]:
         if msg.get("role") in ["user", "assistant"]:
             messages.append({
-                "role": msg["role"],
+                "role":    msg["role"],
                 "content": msg["content"]
             })
 
     messages.append({
-        "role": "user",
+        "role":    "user",
         "content": request.message
     })
 
