@@ -1,11 +1,9 @@
 import os
 from groq import Groq
 
-APP_VERSION = "1.0.0"
+APP_VERSION = "2.0.0"
 APP_NAME    = "Eitaa AI Miniapp"
 MAX_HISTORY = 10
-
-# مدل Groq - سریع و رایگان
 AI_MODEL    = "llama-3.3-70b-versatile"
 MAX_TOKENS  = 1000
 TEMPERATURE = 0.7
