@@ -5,7 +5,6 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from backend.database import get_db
-from backend.models import Admin, Customer
 import os
 import secrets
 
@@ -15,14 +14,12 @@ ALGORITHM  = "HS256"
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 bearer      = HTTPBearer()
 
-# ─── رمز ──────────────────────────────────────
 def hash_password(password: str) -> str:
     return pwd_context.hash(password)
 
 def verify_password(plain: str, hashed: str) -> bool:
     return pwd_context.verify(plain, hashed)
 
-# ─── توکن ─────────────────────────────────────
 def create_token(data: dict, expires_hours: int = 24) -> str:
     to_encode = data.copy()
     expire    = datetime.utcnow() + timedelta(hours=expires_hours)
@@ -35,7 +32,6 @@ def decode_token(token: str) -> dict:
     except JWTError:
         return {}
 
-# ─── احراز هویت ادمین ─────────────────────────
 def get_admin(
     credentials: HTTPAuthorizationCredentials = Depends(bearer),
     db: Session = Depends(get_db)
@@ -48,8 +44,8 @@ def get_admin(
         )
     return payload
 
-# ─── احراز هویت مشتری با API Key ──────────────
 def get_customer(api_key: str, db: Session):
+    from backend.models import Customer
     customer = db.query(Customer).filter(
         Customer.api_key == api_key,
         Customer.is_active == True
@@ -61,7 +57,6 @@ def get_customer(api_key: str, db: Session):
             detail="API Key نامعتبر"
         )
 
-    # چک اعتبار
     if customer.expires_at and customer.expires_at < datetime.now():
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
@@ -70,6 +65,5 @@ def get_customer(api_key: str, db: Session):
 
     return customer
 
-# ─── ساخت API Key ─────────────────────────────
 def generate_api_key() -> str:
     return f"eai_{secrets.token_urlsafe(32)}"
