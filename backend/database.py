@@ -4,7 +4,7 @@ from sqlalchemy.orm import sessionmaker
 import os
 
 DATABASE_URL = os.getenv(
-    "DATABASE_URL", 
+    "DATABASE_URL",
     "sqlite:///./eitaa_ai.db"
 )
 
@@ -14,8 +14,8 @@ engine = create_engine(
 )
 
 SessionLocal = sessionmaker(
-    autocommit=False, 
-    autoflush=False, 
+    autocommit=False,
+    autoflush=False,
     bind=engine
 )
 
@@ -29,7 +29,6 @@ def get_db():
         db.close()
 
 def init_db():
-    # باید بعد از import مدل‌ها صدا زده بشه
     from backend.models import Customer, Message, Payment, Admin
     Base.metadata.create_all(bind=engine)
     print("✅ دیتابیس آماده شد!")
