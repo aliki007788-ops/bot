@@ -10,24 +10,25 @@ import os
 
 router = APIRouter(prefix="/payment", tags=["Payment"])
 
-# زرین‌پال
 ZARINPAL_MERCHANT = os.getenv("ZARINPAL_MERCHANT", "")
 ZARINPAL_REQUEST  = "https://api.zarinpal.com/pg/v4/payment/request.json"
 ZARINPAL_VERIFY   = "https://api.zarinpal.com/pg/v4/payment/verify.json"
 ZARINPAL_START    = "https://www.zarinpal.com/pg/StartPay/"
 
-# پلن‌ها
 PLANS = {
-    "basic":      {"price": 290000,  "days": 30,  "name": "پایه"},
-    "pro":        {"price": 690000,  "days": 30,  "name": "حرفه‌ای"},
-    "enterprise": {"price": 1490000, "days": 30,  "name": "سازمانی"}
+    "basic":      {"price": 290000,  "days": 30, "name": "پایه"},
+    "pro":        {"price": 690000,  "days": 30, "name": "حرفه‌ای"},
+    "enterprise": {"price": 1490000, "days": 30, "name": "سازمانی"}
 }
 
 class PaymentRequest(BaseModel):
-    api_key:  str
-    plan:     str
+    api_key: str
+    plan:    str
 
-# ─── درخواست پرداخت ───────────────────────────
+@router.get("/plans")
+async def get_plans():
+    return PLANS
+
 @router.post("/request")
 async def payment_request(
     req: PaymentRequest,
@@ -42,16 +43,12 @@ async def payment_request(
 
     base_url = str(request.base_url).rstrip("/")
 
-    # درخواست به زرین‌پال
     data = {
         "merchant_id":  ZARINPAL_MERCHANT,
         "amount":       plan["price"],
         "description":  f"خرید اشتراک {plan['name']} - {customer.name}",
         "callback_url": f"{base_url}/payment/verify",
-        "metadata": {
-            "mobile": customer.phone,
-            "email":  ""
-        }
+        "metadata":     {"mobile": customer.phone}
     }
 
     try:
@@ -61,7 +58,6 @@ async def payment_request(
         if resp["data"]["code"] == 100:
             authority = resp["data"]["authority"]
 
-            # ذخیره در دیتابیس
             payment = Payment(
                 customer_id = customer.id,
                 amount      = plan["price"],
@@ -73,10 +69,10 @@ async def payment_request(
             db.commit()
 
             return {
-                "success":      True,
-                "payment_url":  f"{ZARINPAL_START}{authority}",
-                "amount":       plan["price"],
-                "plan":         plan["name"]
+                "success":     True,
+                "payment_url": f"{ZARINPAL_START}{authority}",
+                "amount":      plan["price"],
+                "plan":        plan["name"]
             }
         else:
             raise HTTPException(
@@ -84,10 +80,11 @@ async def payment_request(
                 detail="خطا در ایجاد پرداخت"
             )
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# ─── تایید پرداخت ─────────────────────────────
 @router.get("/verify")
 async def payment_verify(
     Authority: str,
@@ -106,7 +103,6 @@ async def payment_verify(
         db.commit()
         return {"success": False, "message": "پرداخت لغو شد"}
 
-    # تایید با زرین‌پال
     data = {
         "merchant_id": ZARINPAL_MERCHANT,
         "amount":      payment.amount,
@@ -118,20 +114,17 @@ async def payment_verify(
         resp = res.json()
 
         if resp["data"]["code"] in [100, 101]:
-            ref_id = resp["data"]["ref_id"]
+            ref_id           = resp["data"]["ref_id"]
+            payment.status   = "success"
+            payment.ref_id   = str(ref_id)
 
-            # آپدیت پرداخت
-            payment.status = "success"
-            payment.ref_id = str(ref_id)
-
-            # آپدیت مشتری
             customer = payment.customer
             plan     = PLANS.get(payment.plan, {})
             days     = plan.get("days", 30)
+            now      = datetime.now()
 
             customer.plan      = payment.plan
             customer.is_active = True
-            now                = datetime.now()
             if customer.expires_at and customer.expires_at > now:
                 customer.expires_at += timedelta(days=days)
             else:
@@ -141,18 +134,13 @@ async def payment_verify(
 
             return {
                 "success": True,
-                "message": f"پرداخت موفق! کد پیگیری: {ref_id}",
+                "message": f"پرداخت موفق! کد: {ref_id}",
                 "ref_id":  ref_id
             }
         else:
             payment.status = "failed"
             db.commit()
-            return {"success": False, "message": "تایید پرداخت ناموفق"}
+            return {"success": False, "message": "تایید ناموفق"}
 
     except Exception as e:
         return {"success": False, "message": str(e)}
-
-# ─── لیست پلن‌ها ──────────────────────────────
-@router.get("/plans")
-async def get_plans():
-    return PLANS
