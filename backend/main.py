@@ -14,20 +14,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ─── اول database بعد routes ──────────────────
-from backend.database import init_db
-from backend.routes.chat import router as chat_router
-from backend.routes.admin import router as admin_router
-from backend.routes.stats import router as stats_router
+from backend.routes.chat    import router as chat_router
+from backend.routes.admin   import router as admin_router
+from backend.routes.stats   import router as stats_router
 from backend.routes.payment import router as payment_router
-from backend.keepalive import start_keep_alive
+from backend.database       import init_db
+from backend.keepalive      import start_keep_alive
 
 app.include_router(chat_router)
 app.include_router(admin_router)
 app.include_router(stats_router)
 app.include_router(payment_router)
 
-app.mount("/static", StaticFiles(directory="frontend"), name="static")
+app.mount("/static",      StaticFiles(directory="frontend"),       name="static")
 app.mount("/admin-panel", StaticFiles(directory="frontend/admin"), name="admin")
 
 @app.get("/")
