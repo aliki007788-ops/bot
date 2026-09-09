@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
-# ─── مدل‌ها ───────────────────────────────────
+# ─── مدل‌های درخواست (Pydantic) ─────────────────
 class LoginRequest(BaseModel):
     username: str
     password: str
@@ -29,7 +29,25 @@ class CustomerUpdate(BaseModel):
     plan:      str  = "basic"
     days:      int  = 30
 
-# ─── لاگین ادمین ──────────────────────────────
+class ChangePasswordRequest(BaseModel):
+    new_password: str
+
+# ─── ساخت اولین ادمین (Setup) ───────────────────
+@router.post("/setup")
+async def setup(req: LoginRequest, db: Session = Depends(get_db)):
+    exists = db.query(Admin).first()
+    if exists:
+        raise HTTPException(status_code=400, detail="ادمین قبلاً ساخته شده است")
+
+    admin = Admin(
+        username = req.username,
+        password = hash_password(req.password)
+    )
+    db.add(admin)
+    db.commit()
+    return {"message": "ادمین با موفقیت ساخته شد ✅"}
+
+# ─── لاگین ادمین ─────────────────────────────────
 @router.post("/login")
 async def login(req: LoginRequest, db: Session = Depends(get_db)):
     admin = db.query(Admin).filter(
@@ -37,12 +55,33 @@ async def login(req: LoginRequest, db: Session = Depends(get_db)):
     ).first()
 
     if not admin or not verify_password(req.password, admin.password):
-        raise HTTPException(status_code=401, detail="اطلاعات اشتباه است")
+        raise HTTPException(status_code=401, detail="نام کاربری یا رمز عبور اشتباه است")
 
     token = create_token({"admin": True, "username": req.username})
     return {"token": token, "username": req.username}
 
-# ─── لیست مشتریان ─────────────────────────────
+# ─── تغییر رمز عبور ادمین ────────────────────────
+@router.put("/change-password")
+async def change_admin_password(
+    req: ChangePasswordRequest,
+    admin = Depends(get_admin),
+    db: Session = Depends(get_db)
+):
+    # پیدا کردن ادمین بر اساس نام کاربری موجود در توکن
+    admin_user = db.query(Admin).filter(
+        Admin.username == admin["username"]
+    ).first()
+
+    if not admin_user:
+        raise HTTPException(status_code=404, detail="ادمین پیدا نشد")
+
+    # هش کردن رمز جدید و ذخیره در دیتابیس
+    admin_user.password = hash_password(req.new_password)
+    db.commit()
+    
+    return {"message": "رمز عبور با موفقیت تغییر کرد ✅"}
+
+# ─── لیست مشتریان ────────────────────────────────
 @router.get("/customers")
 async def get_customers(
     admin = Depends(get_admin),
@@ -58,24 +97,24 @@ async def get_customers(
         "plan":       c.plan,
         "is_active":  c.is_active,
         "api_key":    c.api_key,
-        "expires_at": c.expires_at,
-        "created_at": c.created_at,
+        "expires_at": c.expires_at.isoformat() if c.expires_at else None,
+        "created_at": c.created_at.isoformat() if c.created_at else None,
         "msg_count":  len(c.messages)
     } for c in customers]
 
-# ─── افزودن مشتری ─────────────────────────────
+# ─── افزودن مشتری جدید ──────────────────────────
 @router.post("/customers")
 async def add_customer(
     req: CustomerCreate,
     admin = Depends(get_admin),
     db: Session = Depends(get_db)
 ):
-    # چک تکراری
+    # بررسی تکراری نبودن شماره تلفن
     exists = db.query(Customer).filter(
         Customer.phone == req.phone
     ).first()
     if exists:
-        raise HTTPException(status_code=400, detail="این شماره قبلاً ثبت شده")
+        raise HTTPException(status_code=400, detail="این شماره تلفن قبلاً ثبت شده است")
 
     customer = Customer(
         name       = req.name,
@@ -92,12 +131,12 @@ async def add_customer(
     db.refresh(customer)
 
     return {
-        "message":  "مشتری اضافه شد ✅",
+        "message":  "مشتری با موفقیت اضافه شد ✅",
         "api_key":  customer.api_key,
         "customer": customer.name
     }
 
-# ─── ویرایش مشتری ─────────────────────────────
+# ─── ویرایش وضعیت مشتری ─────────────────────────
 @router.put("/customers/{customer_id}")
 async def update_customer(
     customer_id: int,
@@ -110,16 +149,16 @@ async def update_customer(
     ).first()
 
     if not customer:
-        raise HTTPException(status_code=404, detail="مشتری پیدا نشد")
+        raise HTTPException(status_code=404, detail="مشتری مورد نظر پیدا نشد")
 
     customer.is_active  = req.is_active
     customer.plan       = req.plan
     customer.expires_at = datetime.now() + timedelta(days=req.days)
 
     db.commit()
-    return {"message": "مشتری آپدیت شد ✅"}
+    return {"message": "اطلاعات مشتری با موفقیت به‌روزرسانی شد ✅"}
 
-# ─── حذف مشتری ────────────────────────────────
+# ─── حذف مشتری ──────────────────────────────────
 @router.delete("/customers/{customer_id}")
 async def delete_customer(
     customer_id: int,
@@ -131,23 +170,8 @@ async def delete_customer(
     ).first()
 
     if not customer:
-        raise HTTPException(status_code=404, detail="مشتری پیدا نشد")
+        raise HTTPException(status_code=404, detail="مشتری مورد نظر پیدا نشد")
 
     db.delete(customer)
     db.commit()
-    return {"message": "مشتری حذف شد ✅"}
-
-# ─── ساخت ادمین اول ───────────────────────────
-@router.post("/setup")
-async def setup(req: LoginRequest, db: Session = Depends(get_db)):
-    exists = db.query(Admin).first()
-    if exists:
-        raise HTTPException(status_code=400, detail="ادمین قبلاً ساخته شده")
-
-    admin = Admin(
-        username = req.username,
-        password = hash_password(req.password)
-    )
-    db.add(admin)
-    db.commit()
-    return {"message": "ادمین ساخته شد ✅"}
+    return {"message": "مشتری با موفقیت حذف شد ✅"}
